@@ -1,0 +1,84 @@
+import matplotlib.pyplot as plt
+from pathlib import Path
+
+# Set Times New Roman globally
+plt.rcParams["font.family"] = "serif"
+plt.rcParams["font.serif"] = ["Times New Roman", "DejaVu Serif"]
+plt.rcParams["mathtext.fontset"] = "stix"  # STIX matches Times New Roman perfectly for math/subscripts
+
+columns = [
+    "Parameter",
+    "Unit",
+    "16/10 °C",
+    "34/28 °C",
+    "p-value",
+]
+
+data_fixed = [
+    [r"V$_{ox}$", r"$\times$ 10$^5$ µm$^3$", "3.01 ± 0.18 a", "2.29 ± 0.10 b", "0.031"],
+    [r"V$_{air}$", r"$\times$ 10$^7$ µm$^3$", "5.42 ± 1.38 a", "1.07 ± 0.18 b", "0.036"],
+    [r"V$_{cells}$", r"$\times$ 10$^8$ µm$^3$", "3.23 ± 0.73 a", "1.95 ± 0.39 a", "0.198"],
+    [r"V$_{total}$", r"$\times$ 10$^8$ µm$^3$", "3.78 ± 0.87 a", "2.06 ± 0.41 a", "0.149"],
+    [r"V$_{air}$ / V$_{cells}$", "%", "16.52 ± 0.58 a", "5.51 ± 0.15 b", "< 0.001"],
+    [r"S$_{ox}$", r"$\times$ 10$^5$ µm$^2$", "2.59 ± 0.23 a", "1.77 ± 0.06 b", "0.024"],
+    [r"S$_{air}$", r"$\times$ 10$^7$ µm$^2$", "3.59 ± 0.88 a", "1.08 ± 0.21 b", "0.050"],
+    [r"S$_{cells}$", r"$\times$ 10$^7$ µm$^2$", "4.27 ± 1.23 a", "3.00 ± 0.84 a", "0.441"],
+    [r"S$_{air}$ / S$_{cells}$", "%", "85.99 ± 4.11 a", "37.58 ± 3.41 b", "< 0.001"],
+    ["Leaf thickness", "µm", "364.32 ± 14.05 a", "302.40 ± 10.86 b", "0.025"],
+]
+
+output_dir = Path("output/pdf")
+output_dir.mkdir(parents=True, exist_ok=True)
+
+fig, ax = plt.subplots(figsize=(10.8, 4.9))
+ax.axis("off")
+
+table = ax.table(
+    cellText=data_fixed,
+    colLabels=columns,
+    colWidths=[0.24, 0.17, 0.23, 0.23, 0.13],
+    cellLoc="center",
+    loc="upper center",
+    bbox=[0, 0.04, 1, 0.92],
+)
+
+table.auto_set_font_size(False)
+table.set_fontsize(11)
+
+n_rows, n_cols = len(data_fixed), len(columns)
+
+for (row, col), cell in table.get_celld().items():
+    cell.set_facecolor("white")
+    cell.set_edgecolor("black")
+    cell.set_linewidth(0)
+    cell.visible_edges = ""
+    if row > 0 and col in (0, 1):
+        cell.get_text().set_ha("left")
+
+for col in range(n_cols):
+    cell = table[(0, col)]
+    cell.get_text().set_fontweight("bold")
+    cell.visible_edges = "TB"
+    cell.set_linewidth(1.15)
+
+for row in range(1, n_rows + 1):
+    for col in range(n_cols):
+        cell = table[(row, col)]
+        cell.visible_edges = "B"
+        cell.set_linewidth(0.32)
+
+for row in (5, 9):
+    for col in range(n_cols):
+        table[(row, col)].set_linewidth(0.9)
+
+for col in range(n_cols):
+    table[(n_rows, col)].set_linewidth(1.15)
+
+pdf_path = output_dir / "micro_CT_summary_table_times.pdf"
+png_path = output_dir / "micro_CT_summary_table_times.png"
+
+fig.savefig(pdf_path, dpi=600, bbox_inches="tight")
+fig.savefig(png_path, dpi=300, bbox_inches="tight")
+plt.close(fig)
+
+print("Generated Times New Roman table successfully.")
