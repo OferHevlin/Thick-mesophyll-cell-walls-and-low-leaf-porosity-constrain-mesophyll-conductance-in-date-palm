@@ -1,0 +1,140 @@
+from pathlib import Path
+import matplotlib.pyplot as plt
+
+# הגדרת פונט Times New Roman
+plt.rcParams['font.family'] = 'serif'
+plt.rcParams['font.serif'] = [
+    'Times New Roman',
+    'DejaVu Serif',
+    'Liberation Serif',
+    'serif',
+]
+plt.rcParams['mathtext.fontset'] = 'stix'
+
+columns = [
+    'Parameter',
+    'Unit',
+    '16/10 °C',
+    '34/28 °C',
+    'p-value',
+]
+
+data = [
+    [
+        r'$S_{\mathrm{m}}$',
+        r'$\mathrm{\mu m^2\,\mu m^{-2}}$',
+        '7.89 ± 0.39 a',
+        '11.94 ± 1.48 a',
+        '0.057',
+    ],
+    [
+        r'$S_{\mathrm{c}}$',
+        r'$\mathrm{\mu m^2\,\mu m^{-2}}$',
+        '5.49 ± 0.33 a',
+        '7.23 ± 0.82 a',
+        '0.118',
+    ],
+    [
+        r'$T_{\mathrm{cw}}$',
+        r'$\mathrm{\mu m}$',
+        '0.600 ± 0.044 a',
+        '0.581 ± 0.024 a',
+        '0.731',
+    ],
+    [
+        r'$A_{\mathrm{ch}}$',
+        r'$\mathrm{\mu m^2}$',
+        '9.75 ± 0.74 a',
+        '9.67 ± 0.65 a',
+        '0.945',
+    ],
+    [
+        r'$L_{\mathrm{ch}} / W_{\mathrm{ch}}$',
+        'ratio',
+        '2.22 ± 0.18 a',
+        '2.29 ± 0.06 a',
+        '0.713',
+    ],
+    [
+        r'$g_{\mathrm{m}}$',
+        r'$\mathrm{mol\,m^{-2}\,s^{-1}}$',
+        '0.0234 ± 0.0017 a',
+        '0.0295 ± 0.0030 a',
+        '0.152',
+    ],
+]
+
+output_dir = Path('output/pdf')
+output_dir.mkdir(parents=True, exist_ok=True)
+
+fig, ax = plt.subplots(figsize=(10.5, 3.8))
+ax.axis('off')
+
+table = ax.table(
+    cellText=data,
+    colLabels=columns,
+    colWidths=[0.32, 0.16, 0.22, 0.22, 0.12],
+    cellLoc='center',
+    loc='upper center',
+    bbox=[0, 0.04, 1, 0.92],
+)
+
+table.auto_set_font_size(False)
+table.set_fontsize(11)
+
+n_rows, n_cols = len(data), len(columns)
+
+for (row, col), cell in table.get_celld().items():
+  cell.set_facecolor('white')
+  cell.set_edgecolor('black')
+  cell.set_linewidth(0)
+  cell.visible_edges = ''
+  if row > 0 and col in (0, 1):
+    cell.get_text().set_ha('left')
+
+# Table header
+for col in range(n_cols):
+  cell = table[(0, col)]
+  cell.get_text().set_fontweight('bold')
+  cell.visible_edges = 'TB'
+  cell.set_linewidth(1.15)
+
+# קווי הפרדה דקים
+for row in range(1, n_rows + 1):
+  for col in range(n_cols):
+    cell = table[(row, col)]
+    cell.visible_edges = 'B'
+    cell.set_linewidth(0.32)
+
+# קווי הפרדה עבים לקבוצות
+for row in (2, 5):
+  for col in range(n_cols):
+    table[(row, col)].set_linewidth(0.8)
+
+for col in range(n_cols):
+  table[(n_rows, col)].set_linewidth(1.15)
+
+# הוספת (anatomy) בגודל ביניים מאוזן (8.8 pt)
+ax.text(
+    0.062,
+    0.108,
+    '(anatomy)',
+    transform=ax.transAxes,
+    fontsize=8.8,
+    fontfamily='serif',
+    va='center',
+    ha='left',
+    color='#222222',
+)
+
+fig.savefig(
+    output_dir / 'morphometric_and_gm_summary_table_medium_anatomy.pdf',
+    dpi=600,
+    bbox_inches='tight',
+)
+fig.savefig(
+    output_dir / 'morphometric_and_gm_summary_table_medium_anatomy.png',
+    dpi=300,
+    bbox_inches='tight',
+)
+plt.show()
