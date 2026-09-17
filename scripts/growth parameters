@@ -1,0 +1,256 @@
+import io
+import string
+import matplotlib.pyplot as plt
+import networkx as nx
+import numpy as np
+import pandas as pd
+import seaborn as sns
+from statsmodels.stats.multicomp import pairwise_tukeyhsd
+
+# 1. טעינת נתוני שאר המדדים
+raw_growth_data = """room,plant,total mass,LA,wet root,wet shoot,leaf number,leaf
+A,1,520,6443.185,320,1420,12,130.559
+A,2,540,5511.664,400,1200,11,122.552
+A,3,500,5577.704,400,1180,12,109.000
+A,4,560,6068.473,380,1380,10,106.804
+A,5,520,6294.028,360,1280,12,125.813
+A,6,640,7077.568,440,1440,11,124.000
+B,1,820,7920.000,560,1600,11,112.000
+B,2,640,6150.000,480,1480,12,107.000
+B,3,720,7300.000,400,1540,12,99.000
+B,4,800,6480.000,480,1680,11,103.000
+B,5,740,5470.000,540,1500,10,83.000
+B,6,800,6830.000,380,1580,10,95.000
+C,1,520,3200.000,300,1040,9,73.000
+C,2,580,3520.000,400,1160,9,76.000
+C,3,460,2650.000,340,900,8,51.000
+C,4,520,3050.000,320,1040,9,61.000
+C,5,400,3020.000,400,820,8,49.000
+C,6,460,3170.000,300,820,8,53.000
+D,1,220,1480.000,180,420,6,42.000
+D,2,160,1130.000,180,400,5,41.000
+D,3,260,1690.000,260,480,7,50.000
+D,4,200,1310.000,220,440,6,45.000
+D,5,180,1570.000,240,400,7,47.000
+D,6,220,1390.000,260,480,6,49.000
+"""
+df_main = pd.read_csv(io.StringIO(raw_growth_data))
+room_map_codes = {
+    'D': '16/10°C',
+    'C': '22/16°C',
+    'B': '28/22°C',
+    'A': '34/28°C',
+}
+room_order = ['16/10°C', '22/16°C', '28/22°C', '34/28°C']
+colors = ['#89AFFF', '#9D8AF2', '#E371A9', '#FF9D66']
+
+df_main['RoomName'] = df_main['room'].map(room_map_codes)
+df_main['RoomName'] = pd.Categorical(
+    df_main['RoomName'], categories=room_order, ordered=True
+)
+df_main['wet_ratio'] = df_main['wet root'] / df_main['wet shoot']
+
+# 2. נתוני ה-LMA החדשים מקובץ LMA.xlsx
+df_lma = pd.read_excel('LMA.xlsx')
+df_lma['plant_filled'] = df_lma['plant'].ffill()
+df_lma['Room'] = df_lma['plant_filled'].str[0]
+df_lma['LMA_g_m2'] = df_lma['LMA'] * 10
+curr_lma = df_lma.groupby(['Room', 'plant_filled'], as_index=False)[
+    'LMA_g_m2'
+].mean()
+curr_lma.rename(columns={'LMA_g_m2': 'LMA'}, inplace=True)
+curr_lma['RoomName'] = curr_lma['Room'].map(room_map_codes)
+curr_lma['RoomName'] = pd.Categorical(
+    curr_lma['RoomName'], categories=room_order, ordered=True
+)
+
+
+def get_stat_letters_main(data, var_name, order):
+  df_sub = data.dropna(subset=[var_name, 'RoomName'])
+  if df_sub.empty:
+    return {r: '' for r in order}
+  tukey = pairwise_tukeyhsd(
+      endog=df_sub[var_name],
+      groups=df_sub['RoomName'].astype(str),
+      alpha=0.05,
+  )
+  summary_data = tukey.summary().data
+  results_df = pd.DataFrame(summary_data[1:], columns=summary_data[0])
+  G = nx.Graph()
+  G.add_nodes_from(order)
+  for _, row in results_df.iterrows():
+    if not row['reject']:
+      G.add_edge(row['group1'], row['group2'])
+  cliques = list(nx.find_cliques(G))
+  means = df_sub.groupby('RoomName', observed=True)[var_name].mean()
+  sorted_cliques = sorted(
+      cliques, key=lambda c: means[list(c)].mean(), reverse=True
+  )
+  letters = {cat: '' for cat in order}
+  for i, clique in enumerate(sorted_cliques):
+    char = string.ascii_lowercase[i]
+    for cat in clique:
+      letters[cat] += char
+  return {k: ''.join(sorted(list(set(v)))) for k, v in letters.items()}
+
+
+# 3. הגדרת רשת 3x2 וציור הפאנלים
+plt.rcdefaults()
+sns.set_theme(style='white')
+
+fig, axes = plt.subplots(3, 2, figsize=(14, 18))
+axes = axes.flatten()
+
+plots_info = [
+    {
+        'var': 'total mass',
+        'ylabel': 'Biomass (g)',
+        'data': df_main,
+        'panel_label': '(a)',
+        'ylim_func': lambda d, v: (d[v].min() * 0.8, d[v].max() * 1.15),
+        'letters': get_stat_letters_main(df_main, 'total mass', room_order),
+    },
+    {
+        'var': 'LA',
+        'ylabel': 'LA ($cm^2$)',
+        'data': df_main,
+        'panel_label': '(b)',
+        'ylim_func': lambda d, v: (d[v].min() * 0.8, d[v].max() * 1.15),
+        'letters': get_stat_letters_main(df_main, 'LA', room_order),
+    },
+    {
+        'var': 'LMA',
+        'ylabel': r'LMA [$g \cdot m^{-2}$]',
+        'data': curr_lma,
+        'panel_label': '(c)',
+        'ylim_func': lambda d, v: (160, 265),
+        'letters': get_stat_letters_main(curr_lma, 'LMA', room_order),
+    },
+    {
+        'var': 'wet_ratio',
+        'ylabel': 'Root/shoot ratio',
+        'data': df_main.drop(index=10),
+        'panel_label': '(d)',
+        'ylim_func': lambda d, v: (0, d[v].max() * 1.3),
+        'letters': get_stat_letters_main(
+            df_main.drop(index=10), 'wet_ratio', room_order
+        ),
+    },
+    {
+        'var': 'leaf number',
+        'ylabel': 'Number of leaves',
+        'data': df_main,
+        'panel_label': '(e)',
+        'ylim_func': lambda d, v: (d[v].min() * 0.8, d[v].max() * 1.15),
+        'letters': get_stat_letters_main(df_main, 'leaf number', room_order),
+    },
+    {
+        'var': 'leaf',
+        'ylabel': 'Max Leaf length (cm)',
+        'data': df_main,
+        'panel_label': '(f)',
+        'ylim_func': lambda d, v: (d[v].min() * 0.8, d[v].max() * 1.15),
+        'letters': get_stat_letters_main(df_main, 'leaf', room_order),
+    },
+]
+
+for i, info in enumerate(plots_info):
+  ax = axes[i]
+  var = info['var']
+  curr_d = info['data'].dropna(subset=[var, 'RoomName']).copy()
+  letters = info['letters']
+
+  ax.set_facecolor('white')
+
+  sns.boxplot(
+      data=curr_d,
+      x='RoomName',
+      y=var,
+      order=room_order,
+      palette=colors,
+      width=0.4,
+      showfliers=False,
+      whis=[0, 100],
+      linewidth=1.2,
+      ax=ax,
+      boxprops=dict(edgecolor='black'),
+      medianprops=dict(color='black', linewidth=2.5),
+  )
+
+  sns.stripplot(
+      data=curr_d,
+      x='RoomName',
+      y=var,
+      order=room_order,
+      color='black',
+      alpha=0.3,
+      jitter=True,
+      size=6,
+      ax=ax,
+  )
+
+  ax.grid(
+      True,
+      which='major',
+      axis='both',
+      color='#E0E0E0',
+      linestyle='-',
+      linewidth=0.8,
+  )
+  ax.set_axisbelow(True)
+
+  for spine in ax.spines.values():
+    spine.set_color('#CCCCCC')
+    spine.set_linewidth(0.8)
+
+  ax.set_ylabel(
+      info['ylabel'], fontsize=18, fontweight='normal', color='black'
+  )
+  ax.set_xlabel(
+      'Growth temperature', fontsize=18, fontweight='normal', color='black'
+  )
+  ax.tick_params(axis='both', labelsize=15, labelcolor='black', colors='#666666')
+
+  ymin, ymax = info['ylim_func'](curr_d, var)
+  ax.set_ylim(ymin, ymax)
+
+  for j, room in enumerate(room_order):
+    room_vals = curr_d[curr_d['RoomName'] == room][var]
+    if not room_vals.empty:
+      top_val = room_vals.max()
+      ax.text(
+          j,
+          top_val + (ymax - ymin) * 0.035,
+          letters[room],
+          ha='center',
+          va='bottom',
+          fontsize=20,
+          fontweight='normal',
+          color='black',
+      )
+
+  ax.text(
+      0.03,
+      0.97,
+      info['panel_label'],
+      transform=ax.transAxes,
+      fontsize=22,
+      fontweight='bold',
+      va='top',
+      ha='left',
+      bbox=dict(
+          facecolor='white',
+          alpha=0.8,
+          edgecolor='none',
+          boxstyle='round,pad=0.2',
+      ),
+  )
+
+plt.tight_layout()
+plt.savefig(
+    'combined_6_scientific_plots_with_new_LMA.png', dpi=300, bbox_inches='tight'
+)
+plt.savefig(
+    'combined_6_scientific_plots_with_new_LMA.pdf', bbox_inches='tight'
+)
+plt.show()
