@@ -1,0 +1,95 @@
+import matplotlib.pyplot as plt
+
+# Column headers
+columns = [
+    r"Porosity ($\varepsilon$)",
+    "Treatment",
+    "Cell wall (%)",
+    "Stroma (%)",
+    "Cytosol (%)",
+    "Chloroplast envelope (%)",
+    "Plasma membrane (%)",
+    "Intercellular air spaces (%)"
+]
+
+# Table data
+data = [
+    ["0.03", "A (34/28°C)", "77.6 ± 0.62", "15.4 ± 0.74", "1.6 ± 0.15", "2.1 ± 0.03", "2.1 ± 0.03", "1.1 ± 0.19"],
+    ["",     "D (16/10°C)", "78.0 ± 1.32", "14.7 ± 1.17", "2.2 ± 0.23", "2.0 ± 0.12", "2.0 ± 0.12", "1.1 ± 0.15"],
+    ["",     r"$p$-value", "0.837", "0.646", "0.081", "0.368", "0.368", "0.921"],
+
+    ["0.05", "A (34/28°C)", "67.6 ± 0.78", "22.4 ± 1.00", "2.3 ± 0.22", "3.1 ± 0.05", "3.1 ± 0.05", "1.6 ± 0.27"],
+    ["",     "D (16/10°C)", "68.0 ± 1.67", "21.4 ± 1.53", "3.2 ± 0.36", "2.9 ± 0.15", "2.9 ± 0.15", "1.6 ± 0.21"],
+    ["",     r"$p$-value", "0.831", "0.627", "0.094", "0.325", "0.325", "0.924"],
+
+    ["0.07", "A (34/28°C)", "59.9 ± 0.87", "27.7 ± 1.16", "2.8 ± 0.28", "3.8 ± 0.07", "3.8 ± 0.07", "2.0 ± 0.34"],
+    ["",     "D (16/10°C)", "60.3 ± 1.84", "26.5 ± 1.75", "4.0 ± 0.47", "3.6 ± 0.17", "3.6 ± 0.17", "2.0 ± 0.25"],
+    ["",     r"$p$-value", "0.826", "0.610", "0.104", "0.291", "0.291", "0.928"],
+
+    ["0.10", "A (34/28°C)", "51.1 ± 0.91", "33.7 ± 1.32", "3.4 ± 0.35", "4.7 ± 0.09", "4.7 ± 0.09", "2.4 ± 0.41"],
+    ["",     "D (16/10°C)", "51.6 ± 1.93", "32.3 ± 1.92", "4.9 ± 0.61", "4.4 ± 0.17", "4.4 ± 0.17", "2.4 ± 0.30"],
+    ["",     r"$p$-value", "0.821", "0.590", "0.115", "0.255", "0.255", "0.932"],
+]
+
+fig, ax = plt.subplots(figsize=(18, 7))
+ax.axis("off")
+
+table = ax.table(
+    cellText=data,
+    colLabels=columns,
+    cellLoc="center",
+    colLoc="center",
+    colWidths=[0.08, 0.14, 0.13, 0.12, 0.11, 0.16, 0.15, 0.17],
+    bbox=[0.01, 0.03, 0.98, 0.93]
+)
+
+table.auto_set_font_size(False)
+table.set_fontsize(10)
+
+n_rows = len(data)
+n_cols = len(columns)
+
+# General formatting: horizontal lines only
+for (row, col), cell in table.get_celld().items():
+    cell.set_facecolor("white")
+    cell.set_edgecolor("black")
+    cell.set_linewidth(0)
+    cell.visible_edges = ""
+
+    if row > 0 and col == 1:
+        cell.get_text().set_ha("left")
+
+# Header formatting
+for col in range(n_cols):
+    cell = table[(0, col)]
+    cell.get_text().set_fontweight("bold")
+    cell.get_text().set_fontsize(10)
+    cell.visible_edges = "TB"
+    cell.set_linewidth(1.2)
+
+# Fine horizontal line below every row
+for row in range(1, n_rows + 1):
+    for col in range(n_cols):
+        cell = table[(row, col)]
+        cell.visible_edges = "B"
+        cell.set_linewidth(0.35)
+
+# Slightly stronger separator after each porosity group
+for row in [3, 6, 9, 12]:
+    for col in range(n_cols):
+        cell = table[(row, col)]
+        cell.visible_edges = "B"
+        cell.set_linewidth(1.0)
+
+# Italicize p-value rows
+for row in [3, 6, 9, 12]:
+    table[(row, 1)].get_text().set_fontstyle("italic")
+
+plt.savefig(
+    "porosity_resistance_table.png",
+    dpi=600,
+    bbox_inches="tight",
+    facecolor="white"
+)
+
+plt.show()
