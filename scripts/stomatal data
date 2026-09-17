@@ -1,0 +1,90 @@
+import itertools
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.stats import studentized_range
+import string
+
+plt.close('all')
+
+data = [
+    {'RoomName': '16/10°C', 'Plant': 'Plant 1', 'Density': 179.825142, 'Avg_Aperture': 12.269048, 'Avg_Size': 577.768916},
+    {'RoomName': '16/10°C', 'Plant': 'Plant 2', 'Density': 148.091293, 'Avg_Aperture': 13.656667, 'Avg_Size': 662.819440},
+    {'RoomName': '16/10°C', 'Plant': 'Plant 3', 'Density': 169.247193, 'Avg_Aperture': 12.320000, 'Avg_Size': 512.241070},
+    {'RoomName': '22/16°C', 'Plant': 'Plant 1', 'Density': 208.033007, 'Avg_Aperture': 11.051250, 'Avg_Size': 490.697924},
+    {'RoomName': '22/16°C', 'Plant': 'Plant 2', 'Density': 222.136940, 'Avg_Aperture': 10.604643, 'Avg_Size': 487.928512},
+    {'RoomName': '22/16°C', 'Plant': 'Plant 3', 'Density': 222.136940, 'Avg_Aperture': 12.059167, 'Avg_Size': 509.782820},
+    {'RoomName': '28/22°C', 'Plant': 'Plant 1', 'Density': 215.084974, 'Avg_Aperture': 10.601667, 'Avg_Size': 404.641200},
+    {'RoomName': '28/22°C', 'Plant': 'Plant 2', 'Density': 259.159764, 'Avg_Aperture': 10.478125, 'Avg_Size': 473.744550},
+    {'RoomName': '28/22°C', 'Plant': 'Plant 3', 'Density': 238.003865, 'Avg_Aperture': 10.787500, 'Avg_Size': 437.030461},
+    {'RoomName': '34/28°C', 'Plant': 'Plant 1', 'Density': 275.026688, 'Avg_Aperture': 9.317917, 'Avg_Size': 386.322429},
+    {'RoomName': '34/28°C', 'Plant': 'Plant 2', 'Density': 275.026688, 'Avg_Aperture': 10.760357, 'Avg_Size': 388.047246},
+    {'RoomName': '34/28°C', 'Plant': 'Plant 3', 'Density': 257.396772, 'Avg_Aperture': 11.025000, 'Avg_Size': 392.136270},
+]
+
+df_plants = pd.DataFrame(data)
+room_order = ['16/10°C', '22/16°C', '28/22°C', '34/28°C']
+colors = ['#89AFFF', '#9D8AF2', '#E371A9', '#FF9D66']
+df_plants['RoomName'] = pd.Categorical(df_plants['RoomName'], categories=room_order, ordered=True)
+
+def get_stat_letters_plant(df, var):
+    sub = df.dropna(subset=[var, 'RoomName'])
+    groups = [sub.loc[sub['RoomName'] == room, var].to_numpy() for room in room_order]
+    n_total, n_groups = sum(map(len, groups)), len(groups)
+    error_ss = sum(((values - values.mean()) ** 2).sum() for values in groups)
+    mse = error_ss / (n_total - n_groups)
+    q_critical = studentized_range.ppf(0.95, n_groups, n_total - n_groups)
+    nonsignificant = {(room,) for room in room_order}
+    for i, j in itertools.combinations(range(n_groups), 2):
+        q = abs(groups[i].mean() - groups[j].mean()) / np.sqrt(mse / len(groups[i]))
+        if q <= q_critical:
+            nonsignificant.add(tuple(sorted((room_order[i], room_order[j]))))
+    # All maximal cliques of the non-significant-comparison graph.
+    cliques = []
+    for size in range(n_groups, 0, -1):
+        for clique in itertools.combinations(room_order, size):
+            if all(tuple(sorted(pair)) in nonsignificant for pair in itertools.combinations(clique, 2)):
+                if not any(set(clique) < set(existing) for existing in cliques):
+                    cliques.append(clique)
+    means = sub.groupby('RoomName', observed=True)[var].mean()
+    cliques = sorted(cliques, key=lambda c: means[list(c)].mean(), reverse=True)
+    letters = {cat: '' for cat in room_order}
+    for index, clique in enumerate(cliques):
+        for cat in clique:
+            letters[cat] += string.ascii_lowercase[index]
+    return {key: ''.join(sorted(set(value))) for key, value in letters.items()}
+
+sns.set_theme(style='whitegrid')
+fig, axes = plt.subplots(1, 3, figsize=(18, 7))
+plots = [
+    ('Density', r'Density [per $mm^2$]', '(a)'),
+    ('Avg_Aperture', r'Aperture [$\mu m$]', '(b)'),
+    ('Avg_Size', r'Size [$\mu m^2$]', '(c)'),
+]
+
+for i, (var, ylabel, label) in enumerate(plots):
+    ax = axes[i]
+    letters_dict = get_stat_letters_plant(df_plants, var)
+    ylim_top = df_plants[var].max() * 1.3
+    sns.boxplot(data=df_plants, x='RoomName', y=var, order=room_order, palette=colors,
+                width=0.42, showfliers=False, whis=[0, 100], linewidth=1.5, ax=ax,
+                boxprops=dict(edgecolor='black'), medianprops=dict(color='black', linewidth=2.2))
+    sns.stripplot(data=df_plants, x='RoomName', y=var, order=room_order,
+                  color='#777777', alpha=0.65, jitter=True, size=7, ax=ax)
+    ax.xaxis.grid(True, color='lightgrey', linestyle='-', linewidth=0.6)
+    ax.yaxis.grid(True, color='lightgrey', linestyle='-', linewidth=0.6)
+    ax.text(0.03, 0.97, label, transform=ax.transAxes, fontsize=20, fontweight='bold', va='top')
+    ax.set_ylabel(ylabel, fontsize=19, fontweight='normal', labelpad=10)
+    ax.set_xlabel('Growth temperature', fontsize=19, fontweight='normal', labelpad=10)
+    ax.set_ylim(0, ylim_top)
+    ax.tick_params(axis='x', labelsize=16)
+    ax.tick_params(axis='y', labelsize=16)
+    for j, room in enumerate(room_order):
+        room_vals = df_plants[df_plants['RoomName'] == room][var]
+        ax.text(j, room_vals.max() + ylim_top * 0.035, letters_dict[room],
+                ha='center', va='bottom', fontsize=15, fontweight='bold')
+
+plt.tight_layout()
+plt.savefig('stomata_plants_final_figure.png', dpi=300)
+plt.savefig('stomata_plants_final_figure.pdf')
