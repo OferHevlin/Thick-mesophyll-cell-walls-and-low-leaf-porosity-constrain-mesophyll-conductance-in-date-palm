@@ -1,0 +1,148 @@
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from scipy import stats
+
+filepath = 'resistence_5.xlsx'
+df = pd.read_excel(filepath)
+
+# Standardize column names
+rename_dict = {}
+if 'cytosol' in df.columns:
+    rename_dict['cytosol'] = 'cytoplasm'
+for col in df.columns:
+    col_str = str(col).lower()
+    if 'chloroplas' in col_str or 'envelope' in col_str or 'envalope' in col_str:
+        rename_dict[col] = 'envelope'
+
+df_clean = df.rename(columns=rename_dict).copy()
+
+if 'Plant' in df_clean.columns:
+    df_clean['Plant'] = df_clean['Plant'].ffill()
+else:
+    plant_col = [col for col in df_clean.columns if 'Unnamed' in str(col)]
+    if plant_col:
+        df_clean['Plant'] = df_clean[plant_col[0]].ffill()
+
+df_clean = df_clean.dropna(subset=['stroma']).copy()
+
+components = [
+    'stroma',
+    'cytoplasm',
+    'envelope',
+    'plasma',
+    'cell wall',
+    'air spaces',
+]
+comp_labels_clean = [
+    'Stroma',
+    'Cytosol',
+    'Chloroplast\nEnvelope',
+    'Plasma\nMembrane',
+    'Cell Wall',
+    'Air Spaces',
+]
+
+# Group by plant (biological replicates)
+plant_means = df_clean.groupby(['Plant'])[components].mean()
+plant_means['Treatment'] = [
+    'A' if str(p).startswith('A') else 'D' for p in plant_means.index
+]
+
+treatment_means = plant_means.groupby('Treatment')[components].mean()
+treatment_sem = plant_means.groupby('Treatment')[components].sem()
+
+# Calculate independent two-sample t-test
+p_text = {}
+for comp in components:
+    vals_A = plant_means[plant_means['Treatment'] == 'A'][comp]
+    vals_D = plant_means[plant_means['Treatment'] == 'D'][comp]
+    _, p_val = stats.ttest_ind(vals_A, vals_D, equal_var=True)
+    if p_val < 0.001:
+        p_text[comp] = 'p < 0.001'
+    else:
+        p_text[comp] = f'p = {p_val:.3f}'
+
+means_A = treatment_means.loc['A'][components].values
+means_D = treatment_means.loc['D'][components].values
+sem_A = treatment_sem.loc['A'][components].values
+sem_D = treatment_sem.loc['D'][components].values
+
+fig, ax = plt.subplots(figsize=(12, 7), dpi=300)
+
+x = np.arange(len(components))
+width = 0.35
+
+color_A = '#2b5c8f'
+color_D = '#e66101'
+
+rects1 = ax.bar(
+    x - width / 2,
+    means_A,
+    width,
+    yerr=sem_A,
+    capsize=5,
+    label='A (34/28°C)',
+    color=color_A,
+    edgecolor='black',
+    linewidth=0.7,
+    alpha=0.9,
+)
+rects2 = ax.bar(
+    x + width / 2,
+    means_D,
+    width,
+    yerr=sem_D,
+    capsize=5,
+    label='D (16/10°C)',
+    color=color_D,
+    edgecolor='black',
+    linewidth=0.7,
+    alpha=0.9,
+)
+
+# Axis titles and labels
+ax.set_ylabel('Resistance (%)', fontsize=16, fontweight='bold', labelpad=10)
+ax.set_xlabel('Mesophyll Resistance Components', fontsize=16, fontweight='bold', labelpad=12)
+
+ax.set_xticks(x)
+ax.set_xticklabels(comp_labels_clean, fontsize=13, fontweight='bold')
+ax.set_ylim(0, 95)
+ax.tick_params(axis='y', labelsize=13)
+ax.grid(axis='y', linestyle='--', alpha=0.4)
+
+# Draw comparison brackets and p-values
+for i, comp in enumerate(components):
+    top_A = means_A[i] + sem_A[i]
+    top_D = means_D[i] + sem_D[i]
+    max_h = max(top_A, top_D)
+    
+    x1, x2 = x[i] - width / 2, x[i] + width / 2
+    y_bar = max_h + 3.0
+    h_tick = 1.0
+    
+    # Bracket line
+    ax.plot([x1, x1, x2, x2], [y_bar - h_tick, y_bar, y_bar, y_bar - h_tick], color='black', lw=1.0)
+    
+    # Annotation
+    ax.annotate(
+        p_text[comp],
+        xy=(x[i], y_bar + 1.0),
+        ha='center',
+        va='bottom',
+        fontsize=10.5,
+        fontweight='bold',
+        color='black',
+    )
+
+# Legend
+ax.legend(
+    fontsize=12,
+    loc='upper right',
+    framealpha=0.95
+)
+
+plt.tight_layout()
+plt.savefig('mesophyll_resistance_pvalues.png', dpi=300, bbox_inches='tight')
+plt.savefig('mesophyll_resistance_pvalues.pdf', bbox_inches='tight')
+plt.show()
