@@ -1,0 +1,78 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
+from matplotlib.lines import Line2D
+
+# 1. Load data
+file_path = '2025-04-27-AllRoom_light11.csv'
+df = pd.read_csv(file_path)
+df = df.dropna(subset=['A', 'Room', 'Qin', 'Oxygen'])
+
+# 2. NRH Model definition
+def nrh_model(I, alpha, Amax, theta, Rd):
+    term1 = alpha * I + Amax
+    term2 = np.sqrt(np.maximum(term1**2 - 4 * theta * alpha * I * Amax, 0.0))
+    return (1 / (2 * np.maximum(theta, 1e-6))) * (term1 - term2) - Rd
+
+def fit_nrh(x, y):
+    p0 = [0.05, 30, 0.8, 1.0]
+    try:
+        popt, _ = curve_fit(nrh_model, x, y, p0=p0, bounds=([0, 0, 0.01, -5], [0.2, 100, 0.999, 10]))
+        return popt
+    except:
+        return None
+
+# 3. Figure Settings
+room_order = ['D', 'C', 'B', 'A']
+panel_letters = {"D": "a", "C": "b", "B": "c", "A": "d"}
+temp_labels = {"D": "16/10 °C", "C": "22/16 °C", "B": "28/22 °C", "A": "34/28 °C"}
+ox_colors = {'2%': '#A6C1FF', '21%': '#FFB88A'}
+ox_markers = {'2%': 's', '21%': 'o'}
+
+# 4. Plot creation (without statistical stars)
+fig, axes = plt.subplots(1, 4, figsize=(24, 7), sharey=True)
+plt.subplots_adjust(wspace=0.1)
+
+for i, room in enumerate(room_order):
+    ax = axes[i]
+    ax.set_facecolor('white')
+    ax.grid(True, linestyle=':', alpha=0.6)
+    ax.set_title(temp_labels[room], fontsize=20, fontweight='bold', pad=15)
+    ax.text(0.95, 0.95, f"({panel_letters[room]})", transform=ax.transAxes, 
+            fontsize=22, fontweight='bold', va='top', ha='right')
+    
+    room_data = df[df['Room'] == room]
+
+    for ox in ['2%', '21%']:
+        sub = room_data[room_data['Oxygen'] == ox].sort_values('Qin')
+        if sub.empty: continue
+        summ = sub.groupby('Qin')['A'].agg(['mean', 'sem']).reset_index()
+        x_pts, y_m, y_s = summ['Qin'].values, summ['mean'].values, summ['sem'].fillna(0).values
+        popt = fit_nrh(sub['Qin'], sub['A'])
+        if popt is not None:
+            xs = np.linspace(0, 2000, 300)
+            ys = nrh_model(xs, *popt)
+            se_interp = np.interp(xs, x_pts, y_s)
+            ax.fill_between(xs, ys - se_interp, ys + se_interp, color=ox_colors[ox], alpha=0.2)
+            ax.plot(xs, ys, color=ox_colors[ox], linewidth=2.5)
+        ax.errorbar(x_pts, y_m, yerr=y_s, fmt=ox_markers[ox], color=ox_colors[ox], 
+                    ecolor=ox_colors[ox], capsize=4, markersize=10, markeredgecolor='white', alpha=0.9, linestyle='None')
+
+    ax.set_xlim(-50, 2100)
+    ax.set_ylim(-2, 25)
+    ax.set_xlabel(r'$Q_{in}$ ($\mu mol \cdot m^{-2} \cdot s^{-1}$)', fontsize=18)
+    ax.tick_params(axis='both', labelsize=14)
+    for spine in ax.spines.values():
+        spine.set_edgecolor('black')
+        spine.set_linewidth(1.2)
+
+axes[0].set_ylabel(r'$A_n$ ($\mu mol \cdot m^{-2} \cdot s^{-1}$)', fontsize=20)
+legend_elements = [
+    Line2D([0], [0], color=ox_colors['21%'], lw=2.5, marker='o', markersize=9, markeredgecolor='white', label='21%'),
+    Line2D([0], [0], color=ox_colors['2%'], lw=2.5, marker='s', markersize=9, markeredgecolor='white', label='2%')
+]
+axes[0].legend(handles=legend_elements, fontsize=16, loc='upper left', frameon=False)
+
+plt.tight_layout()
+plt.show()
